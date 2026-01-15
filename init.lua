@@ -17,7 +17,6 @@ vim.opt.expandtab = true
 
 -- Set to true if you have a Nerd Font installed and selected in the terminal
 vim.g.have_nerd_font = true
-
 -- [[ Setting options ]]
 -- See `:help vim.o`
 -- NOTE: You can change these options as you wish!
@@ -27,7 +26,10 @@ vim.g.have_nerd_font = true
 vim.o.number = true
 -- You can also add relative line numbers, to help with jumping.
 --  Experiment for yourself to see if you like it!
--- vim.o.relativenumber = true
+vim.o.relativenumber = true
+
+-- Status line update for global statusline
+vim.o.laststatus = 3
 
 -- Enable mouse mode, can be useful for resizing splits for example!
 vim.o.mouse = "a"
@@ -249,6 +251,20 @@ require("lazy").setup({
                 { "<leader>s", group = "[S]earch" },
                 { "<leader>t", group = "[T]oggle" },
                 { "<leader>h", group = "Git [H]unk", mode = { "n", "v" } },
+                { "<leader>c", group = "[C]ode" },
+                { "<leader>ct", group = "[C]ode [T]odo" },
+            },
+        },
+    },
+
+    {
+        "windwp/nvim-autopairs",
+        event = "InsertEnter",
+        opts = {
+            check_ts = true, -- Use treesitter to check for pairs (smarter)
+            disable_filetype = { "TelescopePrompt", "vim" }, -- Disable in certain files
+            fast_wrap = {
+                map = "<M-e>", -- Alt+e to wrap with pair: |hello -> (hello|)
             },
         },
     },
@@ -430,6 +446,14 @@ require("lazy").setup({
                     --  Useful when you're not sure what type a variable is and you want to see
                     --  the definition of its *type*, not where it was *defined*.
                     map("grt", require("telescope.builtin").lsp_type_definitions, "[G]oto [T]ype Definition")
+
+                    --- Code actions under <leader>c
+                    map("<leader>ca", vim.lsp.buf.code_action, "[C]ode [A]ction", { "n", "x" })
+                    map("<leader>cr", vim.lsp.buf.rename, "[C]ode [R]ename")
+                    map("<leader>cd", vim.diagnostic.open_float, "[C]ode [D]iagnostic")
+                    map("<leader>cf", function()
+                        require("conform").format { async = true, lsp_format = "fallback" }
+                    end, "[C]ode [F]ormat")
 
                     -- This function resolves a difference between neovim nightly (version 0.11) and stable (version 0.10)
                     ---@param client vim.lsp.Client
@@ -699,6 +723,52 @@ require("lazy").setup({
                 direction = "horizontal",
             }
         end,
+    },
+
+    {
+        "stevearc/oil.nvim",
+        lazy = false,
+        dependencies = { "nvim-tree/nvim-web-devicons" }, -- Optional icons
+        keys = {
+            { "<leader>e", "<cmd>Oil<cr>", desc = "[E]xplorer" },
+            { "-", "<cmd>Oil<cr>", desc = "Open parent directory" },
+        },
+        opts = {
+            default_file_explorer = true, -- Replace netrw
+            view_options = {
+                show_hidden = true, -- Show dotfiles
+            },
+            keymaps = {
+                ["q"] = "actions.close", -- q to close
+                ["<C-v>"] = "actions.select_vsplit", -- Open in vsplit
+                ["<C-s>"] = "actions.select_split", -- Open in split
+            },
+        },
+    },
+
+    {
+        "akinsho/bufferline.nvim",
+        dependencies = "nvim-tree/nvim-web-devicons",
+        event = "VeryLazy",
+        opts = {
+            options = {
+                mode = "buffers",
+                diagnostics = "nvim_lsp",
+                show_buffer_close_icons = false,
+                show_close_icon = false,
+                offsets = {
+                    { filetype = "oil", text = "Explorer", text_align = "center" },
+                },
+            },
+        },
+        keys = {
+            { "<S-h>", "<cmd>BufferLineCyclePrev<cr>", desc = "Prev buffer" },
+            { "<S-l>", "<cmd>BufferLineCycleNext<cr>", desc = "Next buffer" },
+            { "<leader>bp", "<cmd>BufferLinePick<cr>", desc = "[B]uffer [P]ick" },
+            { "<leader>bc", "<cmd>BufferLinePickClose<cr>", desc = "[B]uffer [C]lose pick" },
+            { "<leader>bo", "<cmd>BufferLineCloseOthers<cr>", desc = "[B]uffer close [O]thers" },
+            { "<leader>bd", "<cmd>bdelete<cr>", desc = "[B]uffer [D]elete current" },
+        },
     },
 
     {
@@ -991,7 +1061,30 @@ require("lazy").setup({
     },
 
     -- Highlight todo, notes, etc in comments
-    { "folke/todo-comments.nvim", event = "VimEnter", dependencies = { "nvim-lua/plenary.nvim" }, opts = { signs = false } },
+    {
+        "folke/todo-comments.nvim",
+        event = "VimEnter",
+        dependencies = { "nvim-lua/plenary.nvim" },
+        opts = { signs = false },
+        keys = {
+            { "<leader>ctl", "<cmd>TodoTelescope<cr>", desc = "[C]ode [T]odo [L]ist" },
+            { "<leader>ctq", "<cmd>TodoQuickFix<cr>", desc = "[C]ode [T]odo [Q]uickfix" },
+            {
+                "<leader>ctn",
+                function()
+                    require("todo-comments").jump_next()
+                end,
+                desc = "[C]ode [T]odo [N]ext",
+            },
+            {
+                "<leader>ctp",
+                function()
+                    require("todo-comments").jump_next()
+                end,
+                desc = "[C]ode [T]odo [P]rev",
+            },
+        },
+    },
 
     -- TODO: Change mini to fast or whatever the name of this thing is with lightnig
     { -- Collection of various small independent plugins/modules
@@ -1034,10 +1127,11 @@ require("lazy").setup({
     { -- Highlight, edit, and navigate code
         "nvim-treesitter/nvim-treesitter",
         build = ":TSUpdate",
-        main = "nvim-treesitter.configs", -- Sets main module to use for opts
+        -- main = "nvim-treesitter.configs", -- Sets main module to use for opts
         -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
+
         opts = {
-            ensure_installed = { "bash", "c", "diff", "html", "lua", "luadoc", "markdown", "markdown_inline", "query", "vim", "vimdoc", "json", "jsonc", "toml" },
+            ensure_installed = { "bash", "c", "diff", "html", "lua", "luadoc", "markdown", "markdown_inline", "query", "vim", "vimdoc", "json", "toml", "rust", "python" },
             -- Autoinstall languages that are not installed
             auto_install = true,
             highlight = {
