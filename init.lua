@@ -88,6 +88,9 @@ vim.o.cursorline = true
 -- Minimal number of screen lines to keep above and below the cursor.
 vim.o.scrolloff = 10
 
+-- Spell checking
+vim.o.spelllang = "en_us,uk"
+
 -- if performing an operation that would fail due to unsaved changes in the buffer (like `:q`),
 -- instead raise a dialog asking if you wish to save the current file(s)
 -- See `:help 'confirm'`
@@ -102,6 +105,11 @@ vim.keymap.set("n", "<Esc>", "<cmd>nohlsearch<CR>")
 
 -- Diagnostic keymaps
 vim.keymap.set("n", "<leader>q", vim.diagnostic.setloclist, { desc = "Open diagnostic [Q]uickfix list" })
+
+-- Spell toggle
+vim.keymap.set("n", "<leader>ts", function()
+    vim.o.spell = not vim.o.spell
+end, { desc = "[T]oggle [S]pell check" })
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -399,7 +407,7 @@ require("lazy").setup({
             { "j-hui/fidget.nvim", opts = {} },
 
             -- Allows extra capabilities provided by blink.cmp
-            "saghen/blink.cmp",
+            -- "saghen/blink.cmp",
         },
         config = function()
             vim.api.nvim_create_autocmd("LspAttach", {
@@ -661,6 +669,9 @@ require("lazy").setup({
                 return require("rustaceanvim.config").get_codelldb_adapter(codelldb_path, liblldb_path)
             end
 
+            local capabilities = vim.lsp.protocol.make_client_capabilities()
+            capabilities = vim.tbl_deep_extend("force", capabilities, require("cmp_nvim_lsp").default_capabilities())
+
             local rustaceanvim = {
                 tools = {
                     float_win_config = {
@@ -668,6 +679,7 @@ require("lazy").setup({
                     },
                 },
                 server = {
+                    capabilities = capabilities,
                     default_settings = {
                         ["rust-analyzer"] = {
                             cargo = {
@@ -675,6 +687,20 @@ require("lazy").setup({
                             },
                         },
                     },
+                    settings = function(project_root, default_settings)
+                        local settings = vim.deepcopy(default_settings or {})
+                        -- Ledger device apps (marked by ledger_app.toml) build for an
+                        -- embedded target where rust-analyzer's defaults misbehave.
+                        local uv = vim.uv or vim.loop
+                        if project_root and uv.fs_stat(project_root .. "/ledger_app.toml") then
+                            settings["rust-analyzer"] = vim.tbl_deep_extend("force", settings["rust-analyzer"] or {}, {
+                                -- Don't scan the python venv (env/, ~11k files) or the
+                                -- ragger snapshot suite (tests/) on startup.
+                                files = { excludeDirs = { "env", "tests" } },
+                            })
+                        end
+                        return settings
+                    end,
                 },
             }
 
@@ -689,9 +715,11 @@ require("lazy").setup({
     {
         "saecki/crates.nvim",
         tag = "stable",
-        dependencies = { "nvim-lua/plenary.nvim" },
+        dependencies = { "nvim-lua/plenary.nvim", "nvimtools/none-ls.nvim" },
         config = function()
-            require("crates").setup {
+            local crates = require "crates"
+
+            crates.setup {
                 null_ls = {
                     enabled = true,
                 },
@@ -704,6 +732,14 @@ require("lazy").setup({
                     border = "rounded",
                 },
             }
+
+            vim.api.nvim_create_autocmd("BufRead", {
+                group = vim.api.nvim_create_augroup("CreatesPopupKeymap", { clear = true }),
+                pattern = "Cargo.toml",
+                callback = function()
+                    vim.keymap.set("n", "K", crates.show_popup, { buffer = true, desc = "Show crate info" })
+                end,
+            })
         end,
     },
 
@@ -1129,15 +1165,42 @@ require("lazy").setup({
         branch = "main",
         lazy = false,
         build = ":TSUpdate",
-        -- main = "nvim-treesitter.configs", -- Sets main module to use for opts
+        main = "nvim-treesitter.configs", -- Sets main module to use for opts
         -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
-        config = function(_, opts)
+        configs = function(_, opts)
+            -- local configs = require "nvim-treesitter.configs"
+            --
+            -- configs.setup {
+            --     install_dir = opts.install_dir,
+            --     ensure_installed = { "bash", "c", "diff", "html", "lua", "luadoc", "markdown", "markdown_inline", "query", "vim", "vimdoc", "json", "toml", "rust", "python" },
+            --
+            --     highlight = {
+            --         enable = true,
+            --         additional_vim_regex_highlighting = true,
+            --     },
+            --
+            --     indent = {
+            --         enable = true,
+            --     },
+            --
+            --     incremental_selection = {
+            --         enable = true,
+            --         keymaps = {
+            --             init_selection = "<c-space>",
+            --             node_incremental = "<c-space>",
+            --             scope_incremental = "<c-s>",
+            --             node_decremental = "<M-space>",
+            --         },
+            --     },
+            -- }
+            --
+            --
             local ts = require "nvim-treesitter"
-            ts.setup { install_dir = opts.install_dir }
+            ts.setup { install_dir = opts.install_dir, highlight = { enable = true } }
 
             local ensure_installed = { "bash", "c", "diff", "html", "lua", "luadoc", "markdown", "markdown_inline", "query", "vim", "vimdoc", "json", "toml", "rust", "python" }
             ts.install(ensure_installed)
-
+            --
             --
             -- for _, lang in ipairs(ensure_installed) do
             --     if not pcall(vim.treesitter.language.add, lang) then
